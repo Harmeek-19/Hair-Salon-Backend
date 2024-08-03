@@ -26,7 +26,6 @@ class Salon(models.Model):
         null=True, 
         blank=True, 
         validators=[MinValueValidator(0), MaxValueValidator(5)]
-        
     )
 
     class Meta:
@@ -35,6 +34,16 @@ class Salon(models.Model):
             models.Index(fields=['city']),
             models.Index(fields=['rating']),
         ]
+
+    def __str__(self):
+        return self.name
+
+class Service(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField()
+    price = models.DecimalField(max_digits=6, decimal_places=2)
+    duration = models.IntegerField(help_text="Duration in minutes")
+    salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='services')
 
     def __str__(self):
         return self.name
@@ -57,14 +66,6 @@ class Stylist(models.Model):
     def __str__(self):
         return self.name
 
-class Service(models.Model):
-    name = models.CharField(max_length=100)
-    description = models.TextField()
-    price = models.DecimalField(max_digits=6, decimal_places=2)
-    duration = models.IntegerField(help_text="Duration in minutes")
-
-    def __str__(self):
-        return self.name
 
 class Promotion(models.Model):
     title = models.CharField(max_length=200)

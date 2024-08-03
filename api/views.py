@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from datetime import datetime, timedelta
 from django.core.mail import send_mail
 from django.conf import settings
@@ -16,7 +16,7 @@ from booking.models import Appointment
 from content.models import Review, Blog
 from .serializers import (SalonSerializer, StylistSerializer, ServiceSerializer, AppointmentSerializer, ReviewSerializer, BlogSerializer, PromotionSerializer)
 from authentication.models import User
-from .permissions import IsSalonOwnerOrReadOnly, IsAdminUserOrReadOnly, IsStylist
+from .permissions import IsSalonOwnerOrReadOnly, IsAdminUserOrReadOnly, IsStylist, IsSalonOwner
 from .reports import get_salon_report, get_stylist_report, get_appointment_report
 
 class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
@@ -24,25 +24,18 @@ class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ServiceSerializer
     permission_classes = [IsAuthenticated, IsAdminUserOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['name', 'price']
+    filterset_fields = ['name', 'price', 'salon']
     search_fields = ['name', 'description']
     ordering_fields = ['price', 'duration']
-
-class TestAuthView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        return Response({"message": "Authentication successful!"})
 
 class SalonViewSet(viewsets.ModelViewSet):
     queryset = Salon.objects.all()
     serializer_class = SalonSerializer
     permission_classes = [IsAuthenticated, IsSalonOwnerOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['name', 'address', 'city', 'country_code']
+    filterset_fields = ['name', 'address', 'city', 'country_code', 'services__price']
     search_fields = ['name', 'address', 'email', 'description']
     ordering_fields = ['name', 'id', 'rating']
-    
 
     @action(detail=False, methods=['get'])
     def nearby(self, request):
@@ -90,16 +83,15 @@ class SalonViewSet(viewsets.ModelViewSet):
         return Response({"detail": "Salon claim request submitted for review."})
 
     @action(detail=False, methods=['get'])
-    def top_rated(self, request):   
+    def top_rated(self, request):
         top_salons = self.get_queryset().order_by('-rating')[:4]
         serializer = self.get_serializer(top_salons, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def recommended(self, request):
-        # For simplicity, we're just returning top-rated salons as recommendations
         return self.top_rated(request)
-        
+
 class StylistViewSet(viewsets.ModelViewSet):
     queryset = Stylist.objects.all()
     serializer_class = StylistSerializer
@@ -249,15 +241,6 @@ class NotificationView(APIView):
 class PromotionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Promotion.objects.all()
     serializer_class = PromotionSerializer
-    
-# api/views.py
-
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from .models import Salon, Stylist
-from .serializers import SalonSerializer, StylistSerializer
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -287,14 +270,6 @@ def create_salon_with_stylists(request):
         }, status=status.HTTP_201_CREATED)
     
     return Response(salon_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from .models import Salon
-from .permissions import IsSalonOwner
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated, IsSalonOwner])
