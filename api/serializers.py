@@ -23,8 +23,7 @@ class ServiceSerializer(serializers.ModelSerializer):
 class AppointmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
-        fields = '__all__'
-
+        fields = ['customer', 'stylist', 'salon', 'service', 'date', 'start_time', 'end_time', 'status', 'total_price', 'notes']
 class ReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review

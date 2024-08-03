@@ -152,7 +152,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['stylist', 'service', 'date', 'status']
     search_fields = ['client_name', 'client_email']
-    ordering_fields = ['date', 'time']
+    ordering_fields = ['date', 'start_time']  # Changed 'time' to 'start_time'
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
@@ -171,19 +171,18 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         stylist = serializer.validated_data['stylist']
         date = serializer.validated_data['date']
-        time = serializer.validated_data['time']
+        start_time = serializer.validated_data['start_time']  # Changed 'time' to 'start_time'
         
-        if Appointment.objects.filter(stylist=stylist, date=date, time=time).exists():
+        if Appointment.objects.filter(stylist=stylist, date=date, start_time=start_time).exists():
             raise serializers.ValidationError("This time slot is already booked.")
         
         appointment = serializer.save()
         
         subject = 'New Appointment Booked'
-        message = f'You have a new appointment on {appointment.date} at {appointment.time}'
+        message = f'You have a new appointment on {appointment.date} at {appointment.start_time}'
         from_email = settings.DEFAULT_FROM_EMAIL
-        recipient_list = [appointment.stylist.email, appointment.client_email]
+        recipient_list = [appointment.stylist.email, appointment.customer.email]  # Changed 'client_email' to 'customer.email'
         send_mail(subject, message, from_email, recipient_list)
-
 class ReportViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated, IsAdminUserOrReadOnly]
 
