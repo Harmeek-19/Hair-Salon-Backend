@@ -19,6 +19,12 @@ from authentication.models import User
 from .permissions import IsSalonOwnerOrReadOnly, IsAdminUserOrReadOnly, IsStylist, IsSalonOwner
 from .reports import get_salon_report, get_stylist_report, get_appointment_report
 
+class TestAuthView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"message": "Authentication successful!"})
+
 class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Service.objects.all()
     serializer_class = ServiceSerializer
