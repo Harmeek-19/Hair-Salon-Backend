@@ -4,7 +4,9 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-django = "*"
+gdal = "==3.8.5"
+django = {extras = ["gis"], version = "*"}
+djangorestframework-gis = "*"
 
 [dev-packages]
 

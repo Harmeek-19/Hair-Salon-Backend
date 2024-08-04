@@ -50,10 +50,10 @@ class Service(models.Model):
     price = models.DecimalField(max_digits=6, decimal_places=2)
     duration = models.IntegerField(help_text="Duration in minutes")
     salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='services')
-
+    
     def __str__(self):
         return self.name
-
+    
 class Stylist(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField(unique=True, null=True, blank=True)
@@ -79,6 +79,21 @@ class Stylist(models.Model):
 
     def __str__(self):
         return self.name
+    user = models.OneToOneField(
+        'authentication.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stylist_profile'
+    )
+
+    def clean(self):
+        if self.user and Stylist.objects.exclude(pk=self.pk).filter(user=self.user).exists():
+            raise ValidationError("This user is already associated with another stylist profile.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
 class Promotion(models.Model):
     title = models.CharField(max_length=200)

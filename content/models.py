@@ -35,12 +35,17 @@ class StaticPage(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+# content/models.py
+
 class Review(models.Model):
     appointment = models.OneToOneField(Appointment, on_delete=models.CASCADE, related_name='review')
     rating = models.IntegerField()
     comment = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Review for appointment {self.appointment.id}"
 
 class FAQ(models.Model):
     question = models.TextField()

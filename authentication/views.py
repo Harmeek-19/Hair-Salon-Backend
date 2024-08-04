@@ -155,3 +155,4 @@ class PasswordResetConfirmView(APIView):
         else:
             print(f"Invalid token for password reset: {uidb64}")
             return Response({'error': 'Invalid reset link or token.'}, status=status.HTTP_400_BAD_REQUEST)
+        

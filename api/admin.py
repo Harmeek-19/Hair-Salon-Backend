@@ -24,8 +24,11 @@ class ServiceAdmin(admin.ModelAdmin):
     list_display = ('name', 'price', 'duration')
     search_fields = ('name',)
 
+
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
-    list_display = ('customer', 'stylist', 'salon', 'service', 'date', 'start_time', 'status')
-    list_filter = ('status', 'date', 'salon')
-    search_fields = ('customer__username', 'stylist__name', 'salon__name')
+    list_display = ('customer', 'stylist', 'salon', 'get_services', 'date', 'start_time', 'status')
+    
+    def get_services(self, obj):
+        return ", ".join([service.name for service in obj.services.all()])
+    get_services.short_description = 'Services'

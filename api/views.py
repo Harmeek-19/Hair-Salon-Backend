@@ -1,5 +1,5 @@
 from django.db.models import Count, Sum
-from rest_framework import viewsets, serializers, status
+from rest_framework import viewsets, serializers, status, permissions
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,6 +18,24 @@ from .serializers import (SalonSerializer, StylistSerializer, ServiceSerializer,
 from authentication.models import User
 from .permissions import IsSalonOwnerOrReadOnly, IsAdminUserOrReadOnly, IsStylist, IsSalonOwner
 from .reports import get_salon_report, get_stylist_report, get_appointment_report
+from rest_framework.permissions import BasePermission
+from .serializers import (
+    SalonSerializer, StylistSerializer, ServiceSerializer, 
+    AppointmentSerializer, ReviewSerializer, BlogSerializer, 
+    PromotionSerializer)
+from django.db import IntegrityError
+from rest_framework import status
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters import rest_framework as filters
+from booking.models import Appointment
+from .models import Salon, Service
+from .serializers import AppointmentSerializer, SalonSerializer
+
+class CanClaimSalon(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'salon_owner'
 
 class TestAuthView(APIView):
     permission_classes = [IsAuthenticated]
@@ -25,14 +43,28 @@ class TestAuthView(APIView):
     def get(self, request):
         return Response({"message": "Authentication successful!"})
 
-class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Service.objects.all()
+class ServiceViewSet(viewsets.ModelViewSet):
+    queryset = Service.objects.all().order_by('id')
     serializer_class = ServiceSerializer
-    permission_classes = [IsAuthenticated, IsAdminUserOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsAdminUserOrReadOnly]
+    http_method_names = ['get', 'post', 'put', 'patch', 'delete']
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['name', 'price', 'salon']
     search_fields = ['name', 'description']
     ordering_fields = ['price', 'duration']
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_create(self, serializer):
+        serializer.save()
 
 class SalonViewSet(viewsets.ModelViewSet):
     queryset = Salon.objects.all()
@@ -66,9 +98,17 @@ class SalonViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def analytics(self, request, pk=None):
         salon = self.get_object()
-        appointments = Appointment.objects.filter(stylist__salon=salon)
-        popular_services = Service.objects.filter(appointment__in=appointments).annotate(count=Count('appointment')).order_by('-count')[:5]
-        revenue = appointments.filter(status='COMPLETED').aggregate(total=Sum('service__price'))['total'] or 0
+        appointments = Appointment.objects.filter(salon=salon)
+        
+        # Get popular services
+        popular_services = Service.objects.filter(appointments__in=appointments).annotate(
+            count=Count('appointments')
+        ).order_by('-count')[:5]
+        
+        # Calculate revenue
+        revenue = appointments.filter(status='COMPLETED').aggregate(
+            total=Sum('total_price')
+        )['total'] or 0
         
         data = {
             'total_appointments': appointments.count(),
@@ -77,15 +117,18 @@ class SalonViewSet(viewsets.ModelViewSet):
             'total_revenue': revenue,
         }
         return Response(data)
-
-    @action(detail=True, methods=['post'])
+    
+    @action(detail=True, methods=['post'], permission_classes=[CanClaimSalon])
     def claim(self, request, pk=None):
+        print(f"Claim attempt by user: {request.user.username}")
         salon = self.get_object()
         if salon.owner:
+            print(f"Salon {salon.id} is already owned by {salon.owner.username}")
             return Response({"detail": "This salon is already claimed."}, status=status.HTTP_400_BAD_REQUEST)
         
         salon.owner = request.user
         salon.save()
+        print(f"Salon {salon.id} claimed by {request.user.username}")
         return Response({"detail": "Salon claim request submitted for review."})
 
     @action(detail=False, methods=['get'])
@@ -111,9 +154,10 @@ class StylistViewSet(viewsets.ModelViewSet):
     def appointments(self, request, pk=None):
         stylist = self.get_object()
         appointments = Appointment.objects.filter(stylist=stylist)
+        print(f"Stylist: {stylist.name}, Appointments count: {appointments.count()}")
         serializer = AppointmentSerializer(appointments, many=True)
         return Response(serializer.data)
-
+    
     @action(detail=True, methods=['get'])
     def available_slots(self, request, pk=None):
         stylist = self.get_object()
@@ -124,7 +168,8 @@ class StylistViewSet(viewsets.ModelViewSet):
         start_time = datetime.combine(date, datetime.min.time()) + timedelta(hours=9)
         end_time = datetime.combine(date, datetime.min.time()) + timedelta(hours=17)
         
-        booked_slots = Appointment.objects.filter(stylist=stylist, date=date).values_list('time', flat=True)
+        # Change this line to use 'start_time' instead of 'time'
+        booked_slots = Appointment.objects.filter(stylist=stylist, date=date).values_list('start_time', flat=True)
         
         available_slots = []
         current_slot = start_time
@@ -141,48 +186,74 @@ class StylistViewSet(viewsets.ModelViewSet):
         if stylist.user:
             return Response({"detail": "This stylist profile is already claimed."}, status=status.HTTP_400_BAD_REQUEST)
         
-        stylist.user = request.user
-        stylist.save()
-        return Response({"detail": "Stylist profile claim request submitted for review."})
-
+        try:
+            stylist.user = request.user
+            stylist.save()
+            return Response({"detail": "Stylist profile claim request submitted for review."})
+        except IntegrityError:
+            return Response({"detail": "You have already claimed a stylist profile."}, status=status.HTTP_400_BAD_REQUEST)
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.all()
     serializer_class = AppointmentSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['stylist', 'service', 'date', 'status']
-    search_fields = ['client_name', 'client_email']
-    ordering_fields = ['date', 'start_time']  # Changed 'time' to 'start_time'
-
-    @action(detail=True, methods=['post'])
-    def confirm(self, request, pk=None):
-        appointment = self.get_object()
-        appointment.status = 'CONFIRMED'
-        appointment.save()
-        return Response({'status': 'appointment confirmed'})
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
-        appointment = self.get_object()
-        appointment.status = 'CANCELLED'
-        appointment.save()
-        return Response({'status': 'appointment cancelled'})
-
+        try:
+            appointment = self.get_object()
+            appointment.status = 'CANCELLED'
+            appointment.save()
+            
+            serializer = self.get_serializer(appointment)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Appointment.DoesNotExist:
+            return Response({'error': 'Appointment not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        try:
+            appointment = self.get_object()
+            appointment.status = 'CONFIRMED'
+            appointment.save()
+            return Response({'status': 'appointment confirmed'}, status=status.HTTP_200_OK)
+        except Appointment.DoesNotExist:
+            return Response({'error': 'Appointment not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     def perform_create(self, serializer):
         stylist = serializer.validated_data['stylist']
         date = serializer.validated_data['date']
-        start_time = serializer.validated_data['start_time']  # Changed 'time' to 'start_time'
+        start_time = serializer.validated_data['start_time']
         
         if Appointment.objects.filter(stylist=stylist, date=date, start_time=start_time).exists():
             raise serializers.ValidationError("This time slot is already booked.")
         
         appointment = serializer.save()
         
+        # Add services to the appointment
+        services = serializer.validated_data.get('services', [])
+        appointment.services.set(services)
+        
         subject = 'New Appointment Booked'
         message = f'You have a new appointment on {appointment.date} at {appointment.start_time}'
         from_email = settings.DEFAULT_FROM_EMAIL
-        recipient_list = [appointment.stylist.email, appointment.customer.email]  # Changed 'client_email' to 'customer.email'
+        recipient_list = [appointment.stylist.email, appointment.customer.email]
         send_mail(subject, message, from_email, recipient_list)
+
+class AppointmentFilter(filters.FilterSet):
+    service = filters.ModelMultipleChoiceFilter(
+        field_name='services__name',
+        to_field_name='name',
+        queryset=Service.objects.all()
+    )
+
+    class Meta:
+        model = Appointment
+        fields = ['stylist', 'date', 'status', 'service']
+
 class ReportViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated, IsAdminUserOrReadOnly]
 
@@ -216,19 +287,6 @@ class BlogViewSet(viewsets.ModelViewSet):
     serializer_class = BlogSerializer
     permission_classes = [IsAuthenticated, IsAdminUserOrReadOnly]
 
-class SuperAdminDashboardView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def get(self, request):
-        total_users = User.objects.count()
-        total_salons = Salon.objects.count()
-        total_appointments = Appointment.objects.count()
-        
-        return Response({
-            "total_users": total_users,
-            "total_salons": total_salons,
-            "total_appointments": total_appointments,
-        })
 
 class NotificationView(APIView):
     permission_classes = [IsAdminUser]
@@ -243,16 +301,23 @@ class NotificationView(APIView):
         
         return Response({"detail": "Notifications sent successfully."})
 
-class PromotionViewSet(viewsets.ReadOnlyModelViewSet):
+class PromotionViewSet(viewsets.ModelViewSet):
     queryset = Promotion.objects.all()
     serializer_class = PromotionSerializer
+    
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permission_classes = [IsAuthenticated, IsAdminUser]
+        else:
+            permission_classes = []
+        return [permission() for permission in permission_classes]
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_salon_with_stylists(request):
     salon_data = request.data.get('salon')
     stylists_data = request.data.get('stylists', [])
-
+    
     # Create salon
     salon_serializer = SalonSerializer(data=salon_data)
     if salon_serializer.is_valid():
@@ -268,7 +333,7 @@ def create_salon_with_stylists(request):
                 created_stylists.append(stylist_serializer.data)
             else:
                 return Response(stylist_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        
         return Response({
             'salon': salon_serializer.data,
             'stylists': created_stylists
@@ -284,4 +349,17 @@ def delete_salon(request, salon_id):
         salon.delete()
         return Response({"message": "Salon and associated stylists deleted successfully"}, status=status.HTTP_200_OK)
     except Salon.DoesNotExist:
-        return Response({"error": "Salon not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "Salon not found"}, status=status.HTTP_404_NOT_FOUND)    
+class SuperAdminDashboardView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        total_users = User.objects.count()
+        total_salons = Salon.objects.count()
+        total_appointments = Appointment.objects.count()
+        
+        return Response({
+            "total_users": total_users,
+            "total_salons": total_salons,
+            "total_appointments": total_appointments,
+        })

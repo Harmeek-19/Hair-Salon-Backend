@@ -2,8 +2,6 @@ from rest_framework import serializers
 from api.models import Salon, Stylist, Service, Promotion
 from booking.models import Appointment
 from content.models import Review, Blog
-from notifications.models import Notification
-
 
 class SalonSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,15 +13,30 @@ class StylistSerializer(serializers.ModelSerializer):
         model = Stylist
         fields = '__all__'
 
+    def validate(self, data):
+        user = data.get('user')
+        if user and Stylist.objects.exclude(pk=self.instance.pk if self.instance else None).filter(user=user).exists():
+            raise serializers.ValidationError("This user is already associated with another stylist profile.")
+        return data
+
 class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = '__all__'
 
 class AppointmentSerializer(serializers.ModelSerializer):
+    services = serializers.PrimaryKeyRelatedField(many=True, queryset=Service.objects.all(), required=False)
+
     class Meta:
         model = Appointment
-        fields = ['customer', 'stylist', 'salon', 'service', 'date', 'start_time', 'end_time', 'status', 'total_price', 'notes']
+        fields = ['id', 'customer', 'stylist', 'salon', 'services', 'date', 'start_time', 'end_time', 'status', 'total_price', 'notes']
+        read_only_fields = ['status']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['services'] = [{'id': service.id, 'name': service.name} for service in instance.services.all()]
+        return representation
+    
 class ReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review
@@ -34,12 +47,6 @@ class BlogSerializer(serializers.ModelSerializer):
         model = Blog
         fields = '__all__'
 
-
-class NotificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Notification
-        fields = '__all__'
-    
 class PromotionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Promotion
