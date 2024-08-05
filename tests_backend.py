@@ -3,9 +3,9 @@ import json
 from datetime import datetime, timedelta
 
 BASE_URL = "http://127.0.0.1:8000"
-USERNAME = "HarmeekS"
+USERNAME = "Adiiii"
 PASSWORD = "itsokay"
-EMAIL = "harmeek729@gmail.com"
+EMAIL = "aditya89505@gmail.com"
 
 def test_endpoint(method, endpoint, data=None, token=None):
     url = f"{BASE_URL}{endpoint}"

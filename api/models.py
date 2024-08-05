@@ -12,6 +12,9 @@ class Salon(models.Model):
     )
     name = models.CharField(max_length=100)
     address = models.CharField(max_length=200)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    address = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     phone = models.CharField(
         max_length=15, 

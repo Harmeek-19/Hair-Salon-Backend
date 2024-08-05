@@ -1,3 +1,22 @@
+from math import radians, sin, cos, sqrt, atan2
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return None
+    
+    R = 6371  # Earth radius in kilometers
+
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    distance = R * c
+
+    return distance
+
+    return distance
 from django.db.models import Count, Sum
 from rest_framework import viewsets, serializers, status, permissions
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -32,6 +51,8 @@ from django_filters import rest_framework as filters
 from booking.models import Appointment
 from .models import Salon, Service
 from .serializers import AppointmentSerializer, SalonSerializer
+from django.http import JsonResponse
+
 
 class CanClaimSalon(BasePermission):
     def has_permission(self, request, view):
@@ -69,21 +90,33 @@ class ServiceViewSet(viewsets.ModelViewSet):
 class SalonViewSet(viewsets.ModelViewSet):
     queryset = Salon.objects.all()
     serializer_class = SalonSerializer
-    permission_classes = [IsAuthenticated, IsSalonOwnerOrReadOnly]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['name', 'address', 'city', 'country_code', 'services__price']
-    search_fields = ['name', 'address', 'email', 'description']
-    ordering_fields = ['name', 'id', 'rating']
 
     @action(detail=False, methods=['get'])
     def nearby(self, request):
-        lat = float(request.query_params.get('lat', 0))
-        lon = float(request.query_params.get('lon', 0))
-        user_location = Point(lon, lat, srid=4326)
+        lat = request.query_params.get('lat')
+        lon = request.query_params.get('lon')
         
-        nearby_salons = Salon.objects.annotate(
-            distance=Distance('location', user_location)
-        ).order_by('distance')[:6]
+        if lat is None or lon is None:
+            return Response({"error": "Latitude and longitude are required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            lat = float(lat)
+            lon = float(lon)
+        except ValueError:
+            return Response({"error": "Invalid latitude or longitude."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        salons = Salon.objects.all()
+        
+        salons_with_distance = []
+        for salon in salons:
+            if salon.latitude is not None and salon.longitude is not None:
+                distance = haversine_distance(lat, lon, salon.latitude, salon.longitude)
+                if distance is not None:
+                    salon.distance = distance
+                    salons_with_distance.append((salon, distance))
+        
+        salons_with_distance.sort(key=lambda x: x[1])
+        nearby_salons = [salon for salon, _ in salons_with_distance[:6]]  # Get top 6 nearest salons
         
         serializer = self.get_serializer(nearby_salons, many=True)
         return Response(serializer.data)
@@ -131,11 +164,16 @@ class SalonViewSet(viewsets.ModelViewSet):
         print(f"Salon {salon.id} claimed by {request.user.username}")
         return Response({"detail": "Salon claim request submitted for review."})
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='top-rated', url_name='top_rated')
     def top_rated(self, request):
+        print("Top rated method called")  # Add this line
         top_salons = self.get_queryset().order_by('-rating')[:4]
+        print(f"Top salons: {top_salons}")  # Add this line
         serializer = self.get_serializer(top_salons, many=True)
         return Response(serializer.data)
+    
+    def test_top_rated(request):
+        return JsonResponse({"message": "Test top rated view"})
     
     @action(detail=False, methods=['get'])
     def recommended(self, request):

@@ -2,12 +2,23 @@ from rest_framework import serializers
 from api.models import Salon, Stylist, Service, Promotion
 from booking.models import Appointment
 from content.models import Review, Blog
+from rest_framework_gis.serializers import GeoFeatureModelSerializer
+from .views import haversine_distance
+from rest_framework import serializers
+from api.models import Salon, Stylist, Service, Promotion
+from booking.models import Appointment
+from content.models import Review, Blog
 
 class SalonSerializer(serializers.ModelSerializer):
+    distance = serializers.SerializerMethodField()
+
     class Meta:
         model = Salon
-        fields = '__all__'
+        fields = ['id', 'name', 'latitude', 'longitude', 'address', 'distance']
 
+    def get_distance(self, obj):
+        return getattr(obj, 'distance', None)
+    
 class StylistSerializer(serializers.ModelSerializer):
     class Meta:
         model = Stylist

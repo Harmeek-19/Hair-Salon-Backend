@@ -7,6 +7,5 @@ urlpatterns = [
     path('auth/', include('authentication.urls')),
     path('notifications/', include('notifications.urls')),
     path('content/', include('content.urls')),
-    path('coupons/', include('coupons.urls')),
     path('dashboard/', include('dashboard.urls')),
 ]

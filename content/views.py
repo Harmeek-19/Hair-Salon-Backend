@@ -4,6 +4,10 @@ from .serializers import BlogPostSerializer, StaticPageSerializer, FAQSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.core.mail import send_mail
+from rest_framework import viewsets, permissions
+from .models import FAQ
+from .serializers import FAQSerializer
+
 
 class BlogPostListCreateView(generics.ListCreateAPIView):
     queryset = Blog.objects.all()
@@ -44,6 +48,14 @@ class ContactFormView(APIView):
         
         return Response({"message": "Your message has been sent successfully."})
     
-class FAQViewSet(viewsets.ReadOnlyModelViewSet):
+
+class IsAdminUserOrReadOnly(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return request.user and request.user.is_staff
+
+class FAQViewSet(viewsets.ModelViewSet):
     queryset = FAQ.objects.all()
     serializer_class = FAQSerializer
+    permission_classes = [IsAdminUserOrReadOnly]

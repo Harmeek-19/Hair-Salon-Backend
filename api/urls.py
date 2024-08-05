@@ -3,8 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (SalonViewSet, StylistViewSet, ServiceViewSet, AppointmentViewSet,
                     TestAuthView, ReviewViewSet, BlogViewSet,
                     SuperAdminDashboardView, ReportViewSet, PromotionViewSet)
-from notifications.views import NotificationListCreateView, NotificationDetailView
 from . import views
+from coupons.views import CouponViewSet  # Add this import
 
 router = DefaultRouter()
 router.register(r'salons', SalonViewSet)
@@ -15,15 +15,12 @@ router.register(r'reviews', ReviewViewSet)
 router.register(r'blogs', BlogViewSet)
 router.register(r'reports', ReportViewSet, basename='report')
 router.register(r'promotions', PromotionViewSet)
+router.register(r'coupons', CouponViewSet)  # Add this line
 
 urlpatterns = [
     path('', include(router.urls)),
     path('test-auth/', TestAuthView.as_view(), name='test-auth'),
     path('super-admin-dashboard/', SuperAdminDashboardView.as_view(), name='super-admin-dashboard'),
-    path('coupons/', include('coupons.urls')),
     path('create-salon-with-stylists/', views.create_salon_with_stylists, name='create_salon_with_stylists'),
     path('delete-salon/<int:salon_id>/', views.delete_salon, name='delete_salon'),
-    # Add these lines for notifications
-    path('notifications/', NotificationListCreateView.as_view(), name='notification-list-create'),
-    path('notifications/<int:pk>/', NotificationDetailView.as_view(), name='notification-detail'),
 ]
