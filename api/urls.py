@@ -4,6 +4,8 @@ from .views import (SalonViewSet, StylistViewSet, ServiceViewSet, AppointmentVie
                     TestAuthView, ReviewViewSet, BlogViewSet,
                     SuperAdminDashboardView, ReportViewSet, PromotionViewSet)
 from . import views
+from django.urls import path
+from .search import GlobalSearchView
 from coupons.views import CouponViewSet  # Add this import
 
 router = DefaultRouter()
@@ -19,6 +21,7 @@ router.register(r'coupons', CouponViewSet)  # Add this line
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('search/', GlobalSearchView.as_view(), name='global-search'),
     path('test-auth/', TestAuthView.as_view(), name='test-auth'),
     path('super-admin-dashboard/', SuperAdminDashboardView.as_view(), name='super-admin-dashboard'),
     path('create-salon-with-stylists/', views.create_salon_with_stylists, name='create_salon_with_stylists'),
